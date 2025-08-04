@@ -3,9 +3,9 @@
 import { useRef, useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
-import { Send, Lightbulb, Wrench, Bug, Save, Download, ChevronDown, Cloud } from 'lucide-react';
+import { Send, Lightbulb, Wrench, Bug, Save, Download, ChevronDown, Cloud, Clock } from 'lucide-react';
 import { FileItem } from '@/types';
-import { supabase } from '@/lib/supabase';
+import { useSupabaseFiles } from '@/hooks/useSupabaseFiles';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +28,54 @@ export default function CodeEditor({ onCodeSend, currentFile, onFileChange, onSa
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isSavingToCloud, setIsSavingToCloud] = useState(false);
+  
+  // Supabase files hook
+  const { 
+    saveFile, 
+    enableAutosave, 
+    disableAutosave, 
+    isAutosaveEnabled, 
+    lastSaved 
+  } = useSupabaseFiles();
+
+  // Toggle autosave functionality
+  const toggleAutosave = () => {
+    if (isAutosaveEnabled) {
+      disableAutosave();
+    } else {
+      const fileName = currentFile?.name || `code_${Date.now()}.js`;
+      enableAutosave(fileName, () => editorRef.current?.getValue() || '');
+    }
+  };
+
+  // Format last saved time
+  const formatLastSaved = (date: Date | null) => {
+    if (!date) return null;
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    
+    if (diffSecs < 60) return `${diffSecs}s ago`;
+    if (diffMins < 60) return `${diffMins}m ago`;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Update autosave when current file changes
+  useEffect(() => {
+    if (isAutosaveEnabled && currentFile?.name) {
+      // Restart autosave with the current file name
+      disableAutosave();
+      enableAutosave(currentFile.name, () => editorRef.current?.getValue() || '');
+    }
+  }, [currentFile?.name, isAutosaveEnabled, enableAutosave, disableAutosave]);
+
+  // Cleanup autosave on unmount
+  useEffect(() => {
+    return () => {
+      disableAutosave();
+    };
+  }, [disableAutosave]);
   const [isSavingToLocal, setIsSavingToLocal] = useState(false);
 
   const handleEditorDidMount = (editor: any) => {
@@ -118,44 +166,26 @@ export default function CodeEditor({ onCodeSend, currentFile, onFileChange, onSa
   const handleSaveToCloud = async () => {
     if (!editorRef.current) return;
 
-    // Check if Supabase is configured
-    if (!supabase) {
-      setToastMessage('Supabase not configured. Please set up environment variables.');
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
-      return;
-    }
-
     setIsSavingToCloud(true);
     try {
       const content = editorRef.current.getValue();
       const fileName = currentFile?.name || `code_${Date.now()}.js`;
 
-      const { data, error } = await supabase
-        .from('code_files')
-        .insert([
-          {
-            filename: fileName,
-            content: content,
-          }
-        ])
-        .select();
+      const result = await saveFile(fileName, content);
 
-      if (error) {
-        throw error;
+      if (result.success) {
+        setToastMessage(`File "${fileName}" saved to cloud successfully!`);
+        setHasUnsavedChanges(false);
+      } else {
+        throw new Error(result.error || 'Unknown error');
       }
-
-      setToastMessage(`File "${fileName}" saved to cloud successfully!`);
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
-      setHasUnsavedChanges(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving to cloud:', error);
       setToastMessage('Failed to save to cloud. Please try again.');
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
     } finally {
       setIsSavingToCloud(false);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
     }
   };
 
@@ -263,6 +293,23 @@ export default function CodeEditor({ onCodeSend, currentFile, onFileChange, onSa
                 <Cloud className="w-3 h-3" />
                 {isSavingToCloud ? 'Saving...' : 'Save to Cloud'}
               </Button>
+
+              <Button
+                onClick={toggleAutosave}
+                size="sm"
+                variant={isAutosaveEnabled ? "default" : "outline"}
+                className="flex items-center gap-1"
+                title={isAutosaveEnabled ? "Disable autosave" : "Enable autosave (15s intervals)"}
+              >
+                <Clock className={`w-3 h-3 ${isAutosaveEnabled ? 'animate-pulse' : ''}`} />
+                {isAutosaveEnabled ? 'Auto On' : 'Auto Off'}
+              </Button>
+
+              {isAutosaveEnabled && lastSaved && (
+                <span className="text-xs text-muted-foreground">
+                  Last saved: {formatLastSaved(lastSaved)}
+                </span>
+              )}
               
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

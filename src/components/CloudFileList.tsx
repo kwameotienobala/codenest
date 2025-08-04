@@ -1,46 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase, CodeFile } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { Cloud, Download, Calendar, FileText, Trash2, RefreshCw } from 'lucide-react';
+import { Cloud, Calendar, FileText, Trash2, RefreshCw } from 'lucide-react';
 import { FileItem } from '@/types';
+import { useSupabaseFiles } from '@/hooks/useSupabaseFiles';
+import { CodeFile } from '@/lib/supabase';
 
 interface CloudFileListProps {
   onFileSelect: (file: FileItem) => void;
 }
 
 export default function CloudFileList({ onFileSelect }: CloudFileListProps) {
-  const [cloudFiles, setCloudFiles] = useState<CodeFile[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { 
+    files: cloudFiles, 
+    isLoading, 
+    error, 
+    deleteFile, 
+    refreshFiles 
+  } = useSupabaseFiles();
 
-  const fetchCloudFiles = async () => {
-    setIsLoading(true);
-    setError(null);
-    
-    // Check if Supabase is configured
-    if (!supabase) {
-      setError('Supabase not configured. Please set up your environment variables.');
-      setIsLoading(false);
-      return;
-    }
 
-    try {
-      const { data, error } = await supabase
-        .from('code_files')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setCloudFiles(data || []);
-    } catch (err: any) {
-      console.error('Error fetching cloud files:', err);
-      setError('Failed to load cloud files. Please check your Supabase configuration.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleFileClick = (cloudFile: CodeFile) => {
     const fileItem: FileItem = {
@@ -59,24 +38,9 @@ export default function CloudFileList({ onFileSelect }: CloudFileListProps) {
       return;
     }
 
-    if (!supabase) {
-      setError('Supabase not configured. Please set up your environment variables.');
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('code_files')
-        .delete()
-        .eq('id', fileId);
-
-      if (error) throw error;
-      
-      // Refresh the list
-      fetchCloudFiles();
-    } catch (err: any) {
-      console.error('Error deleting file:', err);
-      setError('Failed to delete file. Please try again.');
+    const result = await deleteFile(fileId);
+    if (!result.success) {
+      console.error('Error deleting file:', result.error);
     }
   };
 
@@ -100,9 +64,7 @@ export default function CloudFileList({ onFileSelect }: CloudFileListProps) {
     });
   };
 
-  useEffect(() => {
-    fetchCloudFiles();
-  }, []);
+
 
   return (
     <div className="h-full flex flex-col">
@@ -113,7 +75,7 @@ export default function CloudFileList({ onFileSelect }: CloudFileListProps) {
             <h3 className="text-sm font-medium text-card-foreground">Cloud Files</h3>
           </div>
           <Button
-            onClick={fetchCloudFiles}
+            onClick={refreshFiles}
             size="sm"
             variant="ghost"
             className="flex items-center gap-1 h-6 px-2"

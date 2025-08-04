@@ -15,4 +15,11 @@ export interface CodeFile {
   content: string
   created_at: string
   updated_at?: string
+  user_id?: string
+}
+
+export interface FileOperationResult {
+  success: boolean
+  error?: string
+  data?: CodeFile | CodeFile[]
 }
