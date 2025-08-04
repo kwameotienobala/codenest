@@ -40,6 +40,20 @@ export function useSupabaseFiles(): UseSupabaseFilesReturn {
     return true;
   }, []);
 
+  // Handle database errors gracefully
+  const handleDatabaseError = useCallback((err: any) => {
+    console.error('Database error:', err);
+    
+    // Check for specific table not found errors
+    if (err.message?.includes('relation "code_files" does not exist')) {
+      setError('Database table not found. Please run the SQL setup script in your Supabase dashboard.');
+    } else if (err.message?.includes('permission denied')) {
+      setError('Database permission denied. Please check your RLS policies.');
+    } else {
+      setError(err.message || 'Database operation failed');
+    }
+  }, []);
+
   // Load all files from Supabase
   const loadFiles = useCallback(async () => {
     if (!isSupabaseConfigured()) return;
@@ -56,12 +70,11 @@ export function useSupabaseFiles(): UseSupabaseFilesReturn {
       if (error) throw error;
       setFiles(data || []);
     } catch (err: any) {
-      console.error('Error loading files:', err);
-      setError('Failed to load files from cloud storage.');
+      handleDatabaseError(err);
     } finally {
       setIsLoading(false);
     }
-  }, [isSupabaseConfigured]);
+  }, [isSupabaseConfigured, handleDatabaseError]);
 
   // Save file to Supabase (upsert based on filename)
   const saveFile = useCallback(async (
@@ -86,10 +99,7 @@ export function useSupabaseFiles(): UseSupabaseFilesReturn {
 
       const { data, error } = await supabase!
         .from('code_files')
-        .upsert(fileData, { 
-          onConflict: 'filename',
-          ignoreDuplicates: false 
-        })
+        .upsert(fileData)
         .select()
         .single();
 
@@ -103,13 +113,13 @@ export function useSupabaseFiles(): UseSupabaseFilesReturn {
         data: data as CodeFile 
       };
     } catch (err: any) {
-      console.error('Error saving file:', err);
+      handleDatabaseError(err);
       return { 
         success: false, 
         error: err.message || 'Failed to save file' 
       };
     }
-  }, [isSupabaseConfigured, loadFiles]);
+  }, [isSupabaseConfigured, loadFiles, handleDatabaseError]);
 
   // Delete file from Supabase
   const deleteFile = useCallback(async (fileId: string): Promise<FileOperationResult> => {
@@ -129,13 +139,13 @@ export function useSupabaseFiles(): UseSupabaseFilesReturn {
       
       return { success: true };
     } catch (err: any) {
-      console.error('Error deleting file:', err);
+      handleDatabaseError(err);
       return { 
         success: false, 
         error: err.message || 'Failed to delete file' 
       };
     }
-  }, [isSupabaseConfigured, loadFiles]);
+  }, [isSupabaseConfigured, loadFiles, handleDatabaseError]);
 
   // Refresh files (alias for loadFiles)
   const refreshFiles = useCallback(async () => {
