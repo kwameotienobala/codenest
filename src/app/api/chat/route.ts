@@ -1,12 +1,23 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({
+// Initialize OpenAI client only if API key is available
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}) : null;
 
 export async function POST(req: any) {
   try {
     const { prompt } = await req.json();
+
+    // Check if OpenAI client is available
+    if (!openai) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables or use the multi-agent chat instead.' 
+        }),
+        { status: 500 }
+      );
+    }
 
     // Step 1: Create a thread
     const thread = await openai.beta.threads.create();
