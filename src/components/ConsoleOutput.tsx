@@ -22,6 +22,7 @@ interface ConsoleOutputProps {
   onRunCommand: (command: string) => void;
   onClear: () => void;
   onKillProcesses: () => void;
+  onSetWorkingDirectory?: (absolutePath: string) => Promise<boolean>;
 }
 
 type ConsoleTab = 'server' | 'errors' | 'build';
@@ -35,11 +36,13 @@ export default function ConsoleOutput({
   isRunning,
   onRunCommand,
   onClear,
-  onKillProcesses
+  onKillProcesses,
+  onSetWorkingDirectory
 }: ConsoleOutputProps) {
   const [customCommand, setCustomCommand] = useState('');
   const [activeTab, setActiveTab] = useState<ConsoleTab>('server');
   const [showTimestamps, setShowTimestamps] = useState(true);
+  const [cwdInput, setCwdInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
@@ -172,6 +175,13 @@ export default function ConsoleOutput({
     'ls -la'
   ];
 
+  // Detect preview URL from messages
+  const previewUrl = (() => {
+    const allText = messages.map(m => m.content).join('\n');
+    const match = allText.match(/http:\/\/localhost:\d{2,5}/);
+    return match ? match[0] : null;
+  })();
+
   const tabs: Array<{ id: ConsoleTab; label: string; icon: React.ReactNode; color: string }> = [
     {
       id: 'server',
@@ -194,7 +204,7 @@ export default function ConsoleOutput({
   ];
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -268,6 +278,39 @@ export default function ConsoleOutput({
             </Button>
           ))}
         </div>
+
+        {/* Working Directory Controls */}
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            value={cwdInput}
+            onChange={(e) => setCwdInput(e.target.value)}
+            placeholder="Set working directory (absolute path)"
+            className="flex-1 bg-muted px-2 py-1 rounded text-sm"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              if (onSetWorkingDirectory && cwdInput.trim()) {
+                await onSetWorkingDirectory(cwdInput.trim());
+              }
+            }}
+            disabled={!isConnected}
+          >
+            Set CWD
+          </Button>
+          {previewUrl && (
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs underline text-blue-500"
+              title="Open preview in browser"
+            >
+              Open {previewUrl}
+            </a>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col space-y-4 p-4">
@@ -290,7 +333,7 @@ export default function ConsoleOutput({
         {/* Console Output */}
         <div 
           ref={outputRef}
-          className="flex-1 bg-black/90 rounded-lg p-4 overflow-y-auto font-mono text-sm max-h-96 min-h-[200px]"
+          className="flex-1 bg-black/90 rounded-lg p-4 overflow-y-auto font-mono text-sm min-h-0"
         >
           {filteredMessages.length === 0 ? (
             <div className="text-gray-500 text-center py-8">

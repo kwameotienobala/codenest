@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Send, Bot, User, Copy, Check, ChevronDown } from 'lucide-react';
+import { Send, Bot, User, Copy, Check, ChevronDown, Trash2 } from 'lucide-react';
 import { Message, FileItem } from '@/types';
 import { AIProvider, AI_PROVIDERS, AIService } from '@/lib/ai-providers';
 import {
@@ -17,6 +17,8 @@ import { Badge } from '@/components/ui/badge';
 
 interface MultiAgentChatProps {
   onCodeReceived: (code: string) => void;
+  onFileGenerated?: (filename: string, content: string) => void;
+  onFilesGenerated?: (files: { filename: string; content: string }[]) => void;
   currentCode?: string;
   onActionTrigger?: (action: string, code: string) => void;
   triggerMessage?: string;
@@ -25,6 +27,8 @@ interface MultiAgentChatProps {
 
 export default function MultiAgentChat({ 
   onCodeReceived, 
+  onFileGenerated,
+  onFilesGenerated,
   currentCode, 
   onActionTrigger, 
   triggerMessage, 
@@ -34,7 +38,7 @@ export default function MultiAgentChat({
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<AIProvider>('openai');
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider>('ollama');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -141,6 +145,20 @@ export default function MultiAgentChat({
       const response = await AIService.sendMessage(selectedProvider, prompt, fileContext);
 
       if (response.success && response.message) {
+        // Handle code generation
+        if (Array.isArray(response.files) && response.files.length > 0) {
+          if (onFilesGenerated) {
+            onFilesGenerated(response.files);
+          } else if (onFileGenerated) {
+            // Back-compat: write sequentially
+            for (const f of response.files) {
+              await onFileGenerated(f.filename, f.content);
+            }
+          }
+        } else if (response.codeGeneration && onFileGenerated) {
+          onFileGenerated(response.codeGeneration.filename, response.codeGeneration.content);
+        }
+
         const assistantMessage: Message = { 
           role: 'assistant', 
           content: response.message,
@@ -272,9 +290,10 @@ export default function MultiAgentChat({
     <div className="flex flex-col h-full">
       {/* AI Provider Selector */}
       <div className="p-3 border-b border-border bg-card/50">
+        <div className="flex gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="w-full justify-between">
+              <Button variant="outline" size="sm" className="flex-1 justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-lg">{currentProviderConfig.icon}</span>
                 <span className="font-medium">{currentProviderConfig.name}</span>
@@ -305,9 +324,19 @@ export default function MultiAgentChat({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setMessages([])}
+            title="Clear chat history"
+            disabled={messages.length === 0}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
         {messages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
             <div className="mb-4">

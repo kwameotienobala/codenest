@@ -269,10 +269,10 @@ const server = http.createServer(async (req, res) => {
   }
   
   const parsedUrl = url.parse(req.url, true);
-  const path = parsedUrl.pathname;
+  const pathname = parsedUrl.pathname;
   
   // Health check endpoint
-  if (path === '/health' && req.method === 'GET') {
+  if (pathname === '/health' && req.method === 'GET') {
     res.writeHead(200, corsHeaders);
     res.end(JSON.stringify({
       status: 'healthy',
@@ -286,7 +286,7 @@ const server = http.createServer(async (req, res) => {
   }
   
   // List project files endpoint
-  if (path === '/list-files' && req.method === 'GET') {
+  if (pathname === '/list-files' && req.method === 'GET') {
     const query = parsedUrl.query;
     const projectPath = query.path || currentWorkingDir;
     
@@ -347,7 +347,7 @@ const server = http.createServer(async (req, res) => {
   }
   
   // Save file endpoint
-  if (path === '/save-file' && req.method === 'POST') {
+  if (pathname === '/save-file' && req.method === 'POST') {
     let body = '';
     
     req.on('data', (chunk) => {
@@ -406,7 +406,7 @@ const server = http.createServer(async (req, res) => {
   }
   
   // Command execution endpoint
-  if (path === '/run' && req.method === 'POST') {
+  if (pathname === '/run' && req.method === 'POST') {
     let body = '';
     
     req.on('data', (chunk) => {
@@ -461,7 +461,7 @@ const server = http.createServer(async (req, res) => {
   }
   
   // Kill processes endpoint
-  if (path === '/kill' && req.method === 'POST') {
+  if (pathname === '/kill' && req.method === 'POST') {
     let killed = 0;
     activeProcesses.forEach((process, id) => {
       process.kill('SIGTERM');

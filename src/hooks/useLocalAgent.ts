@@ -27,6 +27,7 @@ interface UseLocalAgentReturn {
   clearMessages: () => void;
   killProcesses: () => Promise<void>;
   checkConnection: () => Promise<boolean>;
+  setWorkingDirectory: (absolutePath: string) => Promise<boolean>;
 }
 
 const AGENT_URL = 'http://localhost:5111';
@@ -175,6 +176,31 @@ export function useLocalAgent(): UseLocalAgentReturn {
     }
   }, [checkConnection, addMessage]);
 
+  const setWorkingDirectory = useCallback(async (absolutePath: string): Promise<boolean> => {
+    try {
+      if (!absolutePath || !absolutePath.trim()) return false;
+      // Use list-files endpoint which also updates agent's working directory
+      const url = `${AGENT_URL}/list-files?path=${encodeURIComponent(absolutePath.trim())}`;
+      const response = await fetch(url, { method: 'GET' });
+      if (!response.ok) {
+        addMessage('system', `Failed to set working directory (HTTP ${response.status}).`);
+        return false;
+      }
+      const data = await response.json();
+      if (data.status === 'success') {
+        addMessage('system', `Working directory set to: ${data.projectPath}`);
+        addMessage('system', `Found ${data.stats?.totalFiles ?? 0} files in ${data.stats?.directories ?? 0} folders.`);
+        try { localStorage.setItem('codenest-agent-cwd', data.projectPath); } catch {}
+        return true;
+      }
+      addMessage('system', `Failed to set working directory: ${data.error || 'Unknown error'}`);
+      return false;
+    } catch (error: any) {
+      addMessage('system', `Error setting working directory: ${error.message}`);
+      return false;
+    }
+  }, [addMessage]);
+
   const killProcesses = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch(`${AGENT_URL}/kill`, {
@@ -222,5 +248,6 @@ export function useLocalAgent(): UseLocalAgentReturn {
     clearMessages,
     killProcesses,
     checkConnection,
+    setWorkingDirectory,
   };
 }

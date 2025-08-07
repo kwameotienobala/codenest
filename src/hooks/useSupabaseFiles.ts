@@ -42,15 +42,16 @@ export function useSupabaseFiles(): UseSupabaseFilesReturn {
 
   // Handle database errors gracefully
   const handleDatabaseError = useCallback((err: any) => {
-    console.error('Database error:', err);
+    console.error('Database error details:', JSON.stringify(err, null, 2));
     
     // Check for specific table not found errors
-    if (err.message?.includes('relation "code_files" does not exist')) {
+    const errorMessage = err?.message || 'Database operation failed';
+    if (errorMessage.includes('relation "code_files" does not exist')) {
       setError('Database table not found. Please run the SQL setup script in your Supabase dashboard.');
-    } else if (err.message?.includes('permission denied')) {
+    } else if (errorMessage.includes('permission denied')) {
       setError('Database permission denied. Please check your RLS policies.');
     } else {
-      setError(err.message || 'Database operation failed');
+      setError(errorMessage);
     }
   }, []);
 
@@ -94,8 +95,13 @@ export function useSupabaseFiles(): UseSupabaseFilesReturn {
       };
 
       if (userId) {
-        fileData.user_id = userId;
+        // In the future, you might associate files with projects
+        // For now, this is kept for compatibility, but the schema uses project_id
       }
+      
+      // A hardcoded project_id is used as a placeholder
+      // In a real application, this would be dynamic
+      fileData.project_id = 'default-project';
 
       const { data, error } = await supabase!
         .from('code_files')

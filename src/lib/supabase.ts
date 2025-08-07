@@ -16,6 +16,7 @@ export interface CodeFile {
   created_at: string
   updated_at?: string
   user_id?: string
+  project_id?: string
 }
 
 export interface FileOperationResult {

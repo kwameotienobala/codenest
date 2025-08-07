@@ -48,6 +48,21 @@ export default function CodeEditor({ onCodeSend, currentFile, onFileChange, onSa
     }
   };
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        if (hasUnsavedChanges) {
+          handleSave();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [hasUnsavedChanges]);
+
   // Format last saved time
   const formatLastSaved = (date: Date | null) => {
     if (!date) return null;
@@ -99,6 +114,21 @@ export default function CodeEditor({ onCodeSend, currentFile, onFileChange, onSa
         onFileChange(currentFile.id, newValue);
       }
     });
+
+    // Bubble up diagnostics to AI fixer: when monaco markers change, capture and allow 1-click fix
+    const monacoInstance = (window as any).monaco;
+    if (monacoInstance) {
+      const model = editor.getModel();
+      const updateDiagnostics = () => {
+        const markers = monacoInstance.editor.getModelMarkers({ resource: model.uri });
+        // Store latest markers on the editor instance for use by Fix button
+        (editor as any).__latestMarkers = markers;
+      };
+      const disposable = monacoInstance.editor.onDidChangeMarkers(updateDiagnostics);
+      // Initialize once
+      updateDiagnostics();
+      editor.onDidDispose(() => disposable.dispose());
+    }
   };
 
   const handleSendCode = (action?: string) => {
@@ -250,24 +280,80 @@ export default function CodeEditor({ onCodeSend, currentFile, onFileChange, onSa
             </span>
           )}
           {hasUnsavedChanges && (
-            <span className="text-xs text-orange-600 bg-orange-100 dark:bg-orange-900 dark:text-orange-200 px-2 py-1 rounded">
-              Unsaved
+            <span className="text-xs text-red-600 bg-red-100 dark:bg-red-900 dark:text-red-200 px-2 py-1 rounded animate-pulse font-medium">
+              • UNSAVED CHANGES
             </span>
           )}
         </div>
         
         <div className="flex items-center gap-2">
           {currentFile && (
+            <Button
+              onClick={() => {
+                const editor = editorRef.current;
+                if (!editor) return;
+                const monaco = (window as any).monaco;
+                const model = editor.getModel();
+                const content = editor.getValue();
+                let diagnosticsText = '';
+                if (monaco && (editor as any).__latestMarkers) {
+                  const markers = (editor as any).__latestMarkers as any[];
+                  if (markers.length > 0) {
+                    diagnosticsText = markers
+                      .map(m => `${m.severity === 8 ? 'Error' : 'Warning'} at line ${m.startLineNumber}, col ${m.startColumn}: ${m.message}`)
+                      .join('\n');
+                  }
+                }
+                const fence = '```';
+                const fixPrompt = [
+                  'You are an expert code editor. Fix the following file. Respond with a JSON array of files to write.',
+                  `File path: ${currentFile.path}`,
+                  `Diagnostics:\n${diagnosticsText || '(none captured)'}`,
+                  'Current content:',
+                  fence,
+                  content,
+                  fence,
+                  `Return only JSON, like: [{"filename":"${currentFile.path}","content":"<fixed file>"}]`
+                ].join('\n');
+                onCodeSend(fixPrompt, 'fix-errors');
+              }}
+              size="sm"
+              variant="outline"
+              className="flex items-center gap-1"
+              title="Ask AI to fix current file based on diagnostics"
+            >
+              <Bug className="w-3 h-3" />
+              Fix Errors
+            </Button>
+          )}
+          {currentFile && (
+            <Button
+              onClick={handleSaveToCloud}
+              size="sm"
+              variant="default"
+              className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={isSavingToCloud}
+            >
+              <Cloud className="w-3 h-3" />
+              {isSavingToCloud ? 'Uploading...' : 'Save to Cloud'}
+            </Button>
+          )}
+
+          {currentFile && (
             <>
               <Button
                 onClick={handleSave}
                 size="sm"
-                variant="outline"
-                className="flex items-center gap-1"
+                variant={hasUnsavedChanges ? "default" : "outline"}
+                className={`flex items-center gap-1 ${hasUnsavedChanges ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
                 disabled={!hasUnsavedChanges}
+                title={hasUnsavedChanges ? "Save changes (Ctrl+S)" : "No changes to save"}
               >
                 <Save className="w-3 h-3" />
-                Save
+                {hasUnsavedChanges ? 'Save Now!' : 'Saved'}
+                {hasUnsavedChanges && (
+                  <span className="text-xs opacity-75 ml-1">(Ctrl+S)</span>
+                )}
               </Button>
 
               {onSaveToLocal && currentFile?.path && (
@@ -282,17 +368,6 @@ export default function CodeEditor({ onCodeSend, currentFile, onFileChange, onSa
                   {isSavingToLocal ? 'Saving...' : 'Save to Local'}
                 </Button>
               )}
-
-              <Button
-                onClick={handleSaveToCloud}
-                size="sm"
-                variant="outline"
-                className="flex items-center gap-1"
-                disabled={isSavingToCloud}
-              >
-                <Cloud className="w-3 h-3" />
-                {isSavingToCloud ? 'Saving...' : 'Save to Cloud'}
-              </Button>
 
               <Button
                 onClick={toggleAutosave}
