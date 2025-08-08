@@ -27,14 +27,18 @@ For non-code requests, provide brief helpful responses. For code requests, alway
 
     const fullPrompt = `${systemPrompt}\n\nUser Query: ${prompt}`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+    // Use current stable Gemini models (configurable via env)
+    const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        contents: [{ 
-          parts: [{ text: fullPrompt }] 
+        contents: [{
+          role: 'user',
+          parts: [{ text: fullPrompt }]
         }],
         generationConfig: {
           temperature: 0.7,
@@ -79,7 +83,7 @@ For non-code requests, provide brief helpful responses. For code requests, alway
     return NextResponse.json({ 
       reply,
       usage: data.usageMetadata,
-      model: 'gemini-pro',
+      model,
       provider: 'gemini',
       safetyRatings: data.candidates?.[0]?.safetyRatings
     });

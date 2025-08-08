@@ -25,7 +25,7 @@ import {
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import { FileText, Cloud, Upload, LogOut, FolderOpen, FilePlus2, FolderPlus } from 'lucide-react';
+import { FileText, Cloud, Upload, LogOut, FolderOpen, FilePlus2, FolderPlus, Save } from 'lucide-react';
 import { FileItem } from '@/types';
 import { getDirectoryHandle, storeDirectoryHandle, clearDirectoryHandle } from '@/lib/indexeddb';
 import { useRouter } from 'next/navigation';
@@ -447,6 +447,35 @@ export default function CodeNestLayout() {
     }
   };
 
+  const handleTestLocalSave = async () => {
+    if (!("showDirectoryPicker" in window)) {
+      setProjectError('Your browser does not support the File System Access API. Use Chrome or Edge over HTTPS.');
+      addToast({ type: 'error', message: 'File System Access API not supported (use Chrome/Edge over HTTPS).' });
+      return;
+    }
+    try {
+      let handleToUse: FileSystemDirectoryHandle;
+      if (directoryHandle) {
+        handleToUse = directoryHandle;
+      } else {
+        const picked: FileSystemDirectoryHandle = await (window as any).showDirectoryPicker();
+        await storeDirectoryHandle(picked);
+        setDirectoryHandle(picked);
+        handleToUse = picked;
+      }
+      const permitted = await verifyPermission(handleToUse);
+      if (!permitted) return;
+      const testFile = 'codenest-test.txt';
+      const ok = await saveToLocal(testFile, `CodeNest local save test at ${new Date().toISOString()}\n`);
+      if (ok) {
+        addToast({ type: 'success', message: `Wrote ${testFile} in selected folder.` });
+      }
+    } catch (e: any) {
+      addToast({ type: 'error', message: `Test save failed: ${e.message}` });
+      setProjectError(e.message);
+    }
+  };
+
   const handleCloseProject = async () => {
     const proceed = confirm('Close the current project? You can reopen it from Open Folder...');
     if (!proceed) return;
@@ -641,7 +670,7 @@ export default function CodeNestLayout() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
-                              <DropdownMenuItem onClick={handleOpenLocalProject} disabled={!agentConnected || projectLoading}>
+                              <DropdownMenuItem onClick={handleOpenLocalProject} disabled={projectLoading}>
                                 <FolderOpen className="w-4 h-4 mr-2" />
                                 {projectLoading ? 'Waiting for folder selection...' : 'Open Folder...'}
                               </DropdownMenuItem>
@@ -656,9 +685,19 @@ export default function CodeNestLayout() {
                           
                           {!agentConnected && (
                             <div className="mt-4 text-xs text-amber-600 text-center p-2 bg-amber-50 dark:bg-amber-900/20 rounded">
-                              Start the local agent to open projects
+                              Local agent is optional (enables console). You can still open a folder and save locally.
                             </div>
                           )}
+
+                          <div className="mt-4">
+                            <Button onClick={handleTestLocalSave} className="w-full" variant="secondary">
+                              <Save className="w-4 h-4 mr-2" />
+                              Test Local Save
+                            </Button>
+                            <div className="text-[11px] text-muted-foreground mt-2">
+                              Requires Chrome/Edge and HTTPS (or localhost). You will be asked to pick a folder.
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <>
@@ -675,6 +714,9 @@ export default function CodeNestLayout() {
                               </Button>
                               <Button variant="ghost" size="icon" onClick={() => handleNewFolder('')} title="New Folder in Root">
                                 <FolderPlus className="w-4 h-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={handleTestLocalSave} title="Test Local Save">
+                                <Save className="w-4 h-4" />
                               </Button>
                               <Button variant="ghost" size="icon" onClick={handleCloseProject} title="Close Project">
                                 <LogOut className="w-4 h-4" />
